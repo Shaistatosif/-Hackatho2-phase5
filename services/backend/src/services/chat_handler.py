@@ -305,7 +305,7 @@ class ChatHandler:
         if any(word in message for word in COMPLETE_WORDS):
             tasks, total = await task_service.list_tasks(user_id)
             search_text = message
-            for word in COMPLETE_WORDS + URDU_ACTION_STRIP + ["as", "task", "the"]:
+            for word in sorted(COMPLETE_WORDS + URDU_ACTION_STRIP + ["as", "task", "the", ","], key=len, reverse=True):
                 search_text = search_text.replace(word, " ")
             search_text = self._clean_text(search_text)
 
@@ -335,20 +335,36 @@ class ChatHandler:
         if any(word in message for word in DELETE_WORDS):
             tasks, total = await task_service.list_tasks(user_id)
             search_text = message
-            for word in DELETE_WORDS + URDU_ACTION_STRIP + ["task", "the"]:
+            for word in sorted(DELETE_WORDS + URDU_ACTION_STRIP + ["task", "the", ","], key=len, reverse=True):
                 search_text = search_text.replace(word, " ")
             search_text = self._clean_text(search_text)
 
-            for task in tasks:
-                if self._fuzzy_match(search_text, task.title):
-                    await task_service.delete_task(user_id, task.id, source="chat")
-                    return ChatResponse(
-                        response=f"Deleted task: **{task.title}**",
-                        task_id=task.id,
-                        action="delete"
-                    )
+            if search_text:
+                for task in tasks:
+                    if self._fuzzy_match(search_text, task.title):
+                        await task_service.delete_task(user_id, task.id, source="chat")
+                        return ChatResponse(
+                            response=f"Deleted task: **{task.title}**",
+                            task_id=task.id,
+                            action="delete"
+                        )
 
-            return ChatResponse(response="Could not find that task to delete. Try 'show my tasks' first.")
+            # No task name given or no match - show tasks to choose from
+            pending = [t for t in tasks if t.status == "pending"]
+            if not pending:
+                return ChatResponse(response="No tasks to delete.")
+            if len(pending) == 1:
+                await task_service.delete_task(user_id, pending[0].id, source="chat")
+                return ChatResponse(
+                    response=f"Deleted task: **{pending[0].title}**",
+                    task_id=pending[0].id,
+                    action="delete"
+                )
+            msg = "Which task do you want to delete? Your tasks:\n"
+            for i, task in enumerate(pending[:10], 1):
+                msg += f"\n{i}. {task.title}"
+            msg += "\n\nType 'delete <task name>' to delete one."
+            return ChatResponse(response=msg)
 
         # --- List/show tasks ---
         if any(word in message for word in LIST_WORDS):
