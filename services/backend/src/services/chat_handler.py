@@ -223,6 +223,38 @@ class ChatHandler:
             action=action
         )
 
+    @staticmethod
+    def _clean_text(text: str) -> str:
+        """Remove quotes, extra punctuation, and whitespace from text."""
+        import re
+        # Remove surrounding and stray quotes
+        text = text.strip().strip('"').strip("'").strip('"').strip('"').strip("'").strip("'")
+        # Remove trailing punctuation like - or .
+        text = re.sub(r'[\s\-–—]+$', '', text)
+        return text.strip()
+
+    @staticmethod
+    def _fuzzy_match(search: str, title: str) -> bool:
+        """Check if search text matches a task title (fuzzy)."""
+        search = search.lower().strip()
+        title_lower = title.lower().strip()
+        if not search:
+            return False
+        # Direct substring match
+        if search in title_lower:
+            return True
+        # Check if title is in search
+        if title_lower in search:
+            return True
+        # Word overlap: if most words in search appear in title
+        search_words = set(search.split())
+        title_words = set(title_lower.split())
+        if search_words and search_words & title_words:
+            overlap = len(search_words & title_words) / len(search_words)
+            if overlap >= 0.5:
+                return True
+        return False
+
     async def _process_without_llm(
         self,
         user_id: str,
@@ -230,26 +262,55 @@ class ChatHandler:
     ) -> ChatResponse:
         """
         Smart pattern matching fallback when no LLM API key is available.
-        Handles natural language inputs without requiring exact commands.
+        Handles natural language inputs including Urdu/Roman Urdu commands.
         """
         message = request.message.lower().strip()
-        original = request.message.strip()
+        original = self._clean_text(request.message.strip())
 
         from ..models.schemas import TaskCreateRequest
         from ..services.task_service import get_task_service
         task_service = get_task_service()
 
+        # Keywords for each action (English + Urdu/Roman Urdu)
+        COMPLETE_WORDS = [
+            "complete", "done", "finish", "mark", "completed",
+            "mukammal", "hogaya", "ho gaya", "ho gya", "hogya",
+            "khatam", "kar diya", "kardiya", "krdiya", "kr diya",
+            "complete kro", "complete karo",
+        ]
+        DELETE_WORDS = [
+            "delete", "remove", "cancel", "del",
+            "delet", "hata", "hatao", "hata do", "hatado",
+            "mita", "mitao", "mita do", "mitado",
+            "nikaal", "nikal", "nikal do", "nikaldo",
+            "delete kro", "delete karo", "delet kro", "delet karo",
+            "remove kro", "remove karo",
+        ]
+        LIST_WORDS = [
+            "list", "show", "see", "view", "my tasks", "all tasks",
+            "dikha", "dikhao", "dikha do", "dikhado",
+            "batao", "bata do", "batado", "tasks dikha",
+            "sab tasks", "saray tasks", "saari tasks",
+        ]
+        SEARCH_WORDS = ["find", "search", "look for", "dhoond", "dhundo", "talaash"]
+        HELP_WORDS = ["help", "how", "what can", "madad", "kaise", "kya kar"]
+
+        # Strip common Urdu action words to extract the task name
+        URDU_ACTION_STRIP = [
+            "ko", "kro", "karo", "kar do", "kardo", "krdo", "kr do",
+            "do", "dein", "den", "de do", "dedo",
+        ]
+
         # --- Complete/done/finish a task ---
-        if any(word in message for word in ["complete", "done", "finish", "mark"]):
+        if any(word in message for word in COMPLETE_WORDS):
             tasks, total = await task_service.list_tasks(user_id)
-            # Try to find matching task
             search_text = message
-            for word in ["complete", "done", "finish", "mark", "as", "task", "the"]:
-                search_text = search_text.replace(word, "")
-            search_text = search_text.strip()
+            for word in COMPLETE_WORDS + URDU_ACTION_STRIP + ["as", "task", "the"]:
+                search_text = search_text.replace(word, " ")
+            search_text = self._clean_text(search_text)
 
             for task in tasks:
-                if search_text and search_text.lower() in task.title.lower():
+                if self._fuzzy_match(search_text, task.title):
                     completed = await task_service.complete_task(user_id, task.id, source="chat")
                     if completed:
                         return ChatResponse(
@@ -258,7 +319,6 @@ class ChatHandler:
                             action="complete"
                         )
 
-            # If specific task not found, complete the first pending task
             pending = [t for t in tasks if t.status == "pending"]
             if pending:
                 completed = await task_service.complete_task(user_id, pending[0].id, source="chat")
@@ -272,15 +332,15 @@ class ChatHandler:
             return ChatResponse(response="No pending tasks to complete.")
 
         # --- Delete/remove a task ---
-        if any(word in message for word in ["delete", "remove", "cancel"]):
+        if any(word in message for word in DELETE_WORDS):
             tasks, total = await task_service.list_tasks(user_id)
             search_text = message
-            for word in ["delete", "remove", "cancel", "task", "the"]:
-                search_text = search_text.replace(word, "")
-            search_text = search_text.strip()
+            for word in DELETE_WORDS + URDU_ACTION_STRIP + ["task", "the"]:
+                search_text = search_text.replace(word, " ")
+            search_text = self._clean_text(search_text)
 
             for task in tasks:
-                if search_text and search_text.lower() in task.title.lower():
+                if self._fuzzy_match(search_text, task.title):
                     await task_service.delete_task(user_id, task.id, source="chat")
                     return ChatResponse(
                         response=f"Deleted task: **{task.title}**",
@@ -291,7 +351,7 @@ class ChatHandler:
             return ChatResponse(response="Could not find that task to delete. Try 'show my tasks' first.")
 
         # --- List/show tasks ---
-        if any(word in message for word in ["list", "show", "see", "view", "my tasks", "all tasks"]):
+        if any(word in message for word in LIST_WORDS):
             tasks, total = await task_service.list_tasks(user_id)
 
             if not tasks:
@@ -300,17 +360,16 @@ class ChatHandler:
             msg = f"You have {total} task(s):\n"
             for i, task in enumerate(tasks[:10], 1):
                 status = "[done]" if task.status == "completed" else "[  ]"
-                priority_icon = {"High": "!", "Medium": "-", "Low": "."}
                 msg += f"\n{i}. {status} {task.title} ({task.priority})"
 
             return ChatResponse(response=msg, action="list")
 
         # --- Search tasks ---
-        if any(word in message for word in ["find", "search", "look for"]):
+        if any(word in message for word in SEARCH_WORDS):
             search_text = message
-            for word in ["find", "search", "look for", "tasks", "task", "about"]:
-                search_text = search_text.replace(word, "")
-            search_text = search_text.strip()
+            for word in SEARCH_WORDS + ["tasks", "task", "about"]:
+                search_text = search_text.replace(word, " ")
+            search_text = self._clean_text(search_text)
 
             if search_text:
                 tasks, total = await task_service.search_tasks(user_id, search_text)
@@ -322,33 +381,33 @@ class ChatHandler:
                 return ChatResponse(response=f"No tasks found matching '{search_text}'")
 
         # --- Help ---
-        if any(word in message for word in ["help", "how", "what can"]):
+        if any(word in message for word in HELP_WORDS):
             return ChatResponse(
                 response="I can help you manage tasks! Here's what I understand:\n\n"
                 "- Just type anything to create a task (e.g., 'Buy groceries')\n"
-                "- 'Show my tasks' - list all tasks\n"
-                "- 'Complete <task name>' - mark a task done\n"
-                "- 'Delete <task name>' - remove a task\n"
-                "- 'Find <keyword>' - search tasks"
+                "- 'Show my tasks' / 'tasks dikhao' - list all tasks\n"
+                "- 'Complete <task>' / '<task> complete kro' - mark done\n"
+                "- 'Delete <task>' / '<task> delet kro' - remove a task\n"
+                "- 'Find <keyword>' / 'dhoond <keyword>' - search tasks"
             )
 
         # --- Create task (anything else = create a task) ---
-        # Extract title - remove common prefixes
         title = original
         for prefix in ["add task:", "create task:", "add:", "create:", "new task:",
                         "add task", "create task", "new task", "add", "create", "new",
-                        "task:", "todo:", "todo"]:
+                        "task:", "todo:", "todo",
+                        "banao", "banana hy", "banana hai", "bnao"]:
             if title.lower().startswith(prefix):
                 title = title[len(prefix):].strip()
                 break
 
-        title = title.strip()
+        title = self._clean_text(title)
         if title:
-            # Detect priority from message
+            # Detect priority
             priority = "Medium"
-            if any(w in message for w in ["urgent", "important", "asap", "high priority"]):
+            if any(w in message for w in ["urgent", "important", "asap", "high priority", "zaroori", "fori"]):
                 priority = "High"
-            elif any(w in message for w in ["low priority", "whenever", "not urgent"]):
+            elif any(w in message for w in ["low priority", "whenever", "not urgent", "baad mein", "koi jaldi nahi"]):
                 priority = "Low"
 
             from ..models.task import Priority
