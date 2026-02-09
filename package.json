@@ -1,0 +1,10 @@
+{
+  "name": "todo-chatbot-phase5",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd services/frontend && npm install && npm run build",
+    "dev": "cd services/frontend && npm run dev",
+    "install:frontend": "cd services/frontend && npm install"
+  }
+}
