@@ -14,7 +14,7 @@ import structlog
 from ..models.task import Priority, RecurrencePattern, Task, TaskStatus
 from ..models.events import EventType, TaskEvent
 from ..models.schemas import TaskCreateRequest, TaskUpdateRequest, TaskFilterParams
-from .dapr_client import DaprClient, get_dapr_client
+from .memory_store import MemoryStore, get_memory_store
 
 logger = structlog.get_logger()
 
@@ -32,9 +32,9 @@ class TaskService:
     3. Publish event to Kafka via Dapr Pub/Sub
     """
 
-    def __init__(self, dapr_client: Optional[DaprClient] = None):
-        """Initialize with optional Dapr client for testing."""
-        self.dapr = dapr_client or get_dapr_client()
+    def __init__(self, store: Optional[MemoryStore] = None):
+        """Initialize with optional store for testing."""
+        self.dapr = store or get_memory_store()
 
     # =========================================================================
     # T029 - Create Task

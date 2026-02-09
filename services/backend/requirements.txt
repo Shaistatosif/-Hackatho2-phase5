@@ -1,26 +1,19 @@
-# T002 - Backend Python dependencies
 # Phase V Todo Chatbot - Backend Service
 
 # Web framework
-fastapi==0.109.2
-uvicorn[standard]==0.27.1
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
 
 # Data validation
-pydantic==2.6.1
-pydantic-settings==2.2.1
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
 
-# HTTP client for Dapr
-httpx==0.27.0
+# HTTP client
+httpx>=0.27.0
 
 # Async utilities
-python-dateutil==2.8.2
-python-multipart==0.0.9
+python-dateutil>=2.8.0
+python-multipart>=0.0.9
 
 # Logging
-structlog==24.1.0
-
-# Testing
-pytest==8.0.0
-pytest-asyncio==0.23.4
-pytest-cov==4.1.0
-httpx==0.27.0
+structlog>=24.1.0

@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .services.dapr_client import get_dapr_client
+from .services.memory_store import get_memory_store
 
 # Configure structured logging
 structlog.configure(
@@ -49,8 +49,8 @@ async def lifespan(app: FastAPI):
     logger.info("service_starting", service=SERVICE_NAME, version=SERVICE_VERSION)
     yield
     # Shutdown
-    dapr_client = get_dapr_client()
-    await dapr_client.close()
+    store = get_memory_store()
+    await store.close()
     logger.info("service_stopped", service=SERVICE_NAME)
 
 
@@ -116,53 +116,18 @@ async def health_check():
 
 @app.get("/health/ready", tags=["Health"])
 async def readiness_check():
-    """
-    Readiness probe - checks if service can handle requests.
-    Verifies Dapr sidecar connectivity.
-    """
-    dapr_client = get_dapr_client()
-
-    # Check Dapr sidecar health
-    try:
-        # Simple state operation to verify Dapr is ready
-        await dapr_client.get_state("health-check")
-        dapr_ready = True
-    except Exception as e:
-        logger.warning("dapr_health_check_failed", error=str(e))
-        dapr_ready = False
-
-    if dapr_ready:
-        return {
-            "status": "ready",
-            "service": SERVICE_NAME,
-            "dapr": "connected"
-        }
-    else:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "not_ready",
-                "service": SERVICE_NAME,
-                "dapr": "disconnected"
-            }
-        )
+    """Readiness probe - checks if service can handle requests."""
+    return {
+        "status": "ready",
+        "service": SERVICE_NAME,
+        "store": "in-memory"
+    }
 
 
 @app.get("/health/live", tags=["Health"])
 async def liveness_check():
     """Liveness probe - basic check that service is running."""
     return {"status": "alive", "service": SERVICE_NAME}
-
-
-# Dapr subscription endpoint for pub/sub
-@app.get("/dapr/subscribe", tags=["Dapr"])
-async def dapr_subscribe():
-    """
-    Dapr subscription configuration.
-    Tells Dapr which topics this service subscribes to.
-    Backend doesn't consume - it only publishes.
-    """
-    return []
 
 
 # Root endpoint
