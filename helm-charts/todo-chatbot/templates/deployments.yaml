@@ -1,0 +1,75 @@
+# T108 - Helm Deployment Templates
+# Phase V Todo Chatbot - Service Deployments
+{{- range $name, $service := dict "backend" .Values.backend "frontend" .Values.frontend "notification" .Values.notification "recurring" .Values.recurring "audit" .Values.audit "websocket" .Values.websocket }}
+{{- if $service.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    app: {{ $name }}
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/part-of: todo-chatbot
+    helm.sh/chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+spec:
+  replicas: {{ $service.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+      annotations:
+        {{- if $service.dapr.enabled }}
+        dapr.io/enabled: "true"
+        dapr.io/app-id: {{ $service.dapr.appId | quote }}
+        dapr.io/app-port: {{ $service.port | quote }}
+        dapr.io/enable-api-logging: "true"
+        {{- end }}
+    spec:
+      containers:
+        - name: {{ $name }}
+          image: "{{ $service.image.repository }}:{{ $service.image.tag }}"
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ $service.port }}
+              name: http
+          env:
+            - name: LOG_LEVEL
+              value: "INFO"
+            {{- if eq $name "backend" }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: openai-api-key
+            {{- end }}
+            {{- if eq $name "frontend" }}
+            - name: NEXT_PUBLIC_API_URL
+              value: "http://backend:8000"
+            - name: NEXT_PUBLIC_WS_URL
+              value: "ws://websocket:8004"
+            {{- end }}
+            {{- if eq $name "recurring" }}
+            - name: BACKEND_URL
+              value: "http://localhost:3500/v1.0/invoke/backend/method"
+            {{- end }}
+          resources:
+            {{- toYaml $service.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: {{ if eq $name "backend" }}/health/live{{ else }}/health{{ end }}
+              port: {{ $service.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: {{ if eq $name "backend" }}/health/ready{{ else }}/health{{ end }}
+              port: {{ $service.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 5
+{{- end }}
+{{- end }}

@@ -1,0 +1,23 @@
+# T109 - Helm Service Templates
+# Phase V Todo Chatbot - Kubernetes Services
+{{- range $name, $service := dict "backend" .Values.backend "frontend" .Values.frontend "notification" .Values.notification "recurring" .Values.recurring "audit" .Values.audit "websocket" .Values.websocket }}
+{{- if $service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    app: {{ $name }}
+    helm.sh/chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ $service.port }}
+      targetPort: {{ $service.port }}
+      name: http
+  selector:
+    app: {{ $name }}
+{{- end }}
+{{- end }}

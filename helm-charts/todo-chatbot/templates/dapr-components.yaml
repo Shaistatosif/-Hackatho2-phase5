@@ -1,0 +1,69 @@
+# T112 - Helm Dapr Components Template
+# Phase V Todo Chatbot - Dapr Components
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: {{ .Values.dapr.pubsub.name }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  type: pubsub.kafka
+  version: v1
+  metadata:
+    - name: brokers
+      value: {{ .Values.dapr.pubsub.brokers | quote }}
+    - name: consumerGroup
+      value: "todo-chatbot"
+    - name: authRequired
+      value: "false"
+    - name: maxMessageBytes
+      value: "1048576"
+scopes:
+  - backend
+  - notification
+  - recurring
+  - audit
+  - websocket
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: {{ .Values.dapr.statestore.name }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  type: {{ .Values.dapr.statestore.type }}
+  version: v1
+  metadata:
+    - name: connectionString
+      secretKeyRef:
+        name: neon-secret
+        key: connection-string
+    - name: tableName
+      value: "state"
+    - name: keyPrefix
+      value: "todo"
+scopes:
+  - backend
+  - audit
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: kubernetes-secrets
+  namespace: {{ .Values.global.namespace }}
+spec:
+  type: secretstores.kubernetes
+  version: v1
+  metadata: []
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: scheduler
+  namespace: {{ .Values.global.namespace }}
+spec:
+  type: scheduler.job
+  version: v1alpha1
+  metadata: []
+scopes:
+  - backend

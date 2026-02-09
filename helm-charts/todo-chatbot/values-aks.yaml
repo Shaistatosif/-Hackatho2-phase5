@@ -1,0 +1,81 @@
+# T107 - AKS Values Override
+# Phase V Todo Chatbot - Azure Kubernetes Service
+
+global:
+  imagePullPolicy: Always
+
+# Production replicas
+backend:
+  replicas: 2
+  image:
+    repository: your-acr.azurecr.io/todo-chatbot/backend
+    tag: "1.0.0"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+frontend:
+  replicas: 2
+  image:
+    repository: your-acr.azurecr.io/todo-chatbot/frontend
+    tag: "1.0.0"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "300m"
+
+notification:
+  replicas: 1
+  image:
+    repository: your-acr.azurecr.io/todo-chatbot/notification-service
+    tag: "1.0.0"
+
+recurring:
+  replicas: 1
+  image:
+    repository: your-acr.azurecr.io/todo-chatbot/recurring-task-service
+    tag: "1.0.0"
+
+audit:
+  replicas: 1
+  image:
+    repository: your-acr.azurecr.io/todo-chatbot/audit-service
+    tag: "1.0.0"
+
+websocket:
+  replicas: 2
+  image:
+    repository: your-acr.azurecr.io/todo-chatbot/websocket-service
+    tag: "1.0.0"
+
+# Azure Event Hubs or Confluent Cloud Kafka
+dapr:
+  pubsub:
+    brokers: "your-kafka-brokers:9092"
+
+# Enable ingress with Azure Application Gateway
+ingress:
+  enabled: true
+  className: azure/application-gateway
+  annotations:
+    kubernetes.io/ingress.class: azure/application-gateway
+    appgw.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: todo-chatbot.yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
+        - path: /ws
+          pathType: Prefix
+          service: websocket

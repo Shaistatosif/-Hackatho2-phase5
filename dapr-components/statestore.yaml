@@ -1,0 +1,24 @@
+# T009 - Dapr State Store Component (PostgreSQL)
+# Phase V Todo Chatbot - Neon PostgreSQL State Store
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+  namespace: default
+spec:
+  type: state.postgresql
+  version: v1
+  metadata:
+    - name: connectionString
+      secretKeyRef:
+        name: neon-secret
+        key: connection-string
+    - name: tableName
+      value: "state"
+    - name: keyPrefix
+      value: "todo"
+    - name: actorStateStore
+      value: "false"
+scopes:
+  - backend
+  - audit

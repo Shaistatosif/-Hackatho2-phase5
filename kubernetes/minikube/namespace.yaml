@@ -1,0 +1,9 @@
+# T094 - Namespace Definition
+# Phase V Todo Chatbot - Kubernetes Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: todo-chatbot
+  labels:
+    app.kubernetes.io/name: todo-chatbot
+    app.kubernetes.io/part-of: phase-v-hackathon

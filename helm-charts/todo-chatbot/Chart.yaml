@@ -1,0 +1,19 @@
+# T104 - Helm Chart Definition
+# Phase V Todo Chatbot - Helm Chart
+apiVersion: v2
+name: todo-chatbot
+description: Phase V Todo Chatbot - Event-driven task management with Dapr and Kafka
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - todo
+  - chatbot
+  - dapr
+  - kafka
+  - kubernetes
+maintainers:
+  - name: Phase V Hackathon Team
+sources:
+  - https://github.com/phase-v/todo-chatbot
+dependencies: []

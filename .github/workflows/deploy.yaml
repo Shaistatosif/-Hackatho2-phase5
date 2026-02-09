@@ -1,0 +1,102 @@
+# T114, T116 - Deploy Workflow
+# Phase V Todo Chatbot - Cloud Deployment
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      cluster:
+        description: 'Target cluster'
+        required: true
+        default: 'aks'
+        type: choice
+        options:
+          - aks
+          - gke
+          - minikube
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+  HELM_RELEASE: todo-chatbot
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.13.0
+
+      # AKS deployment
+      - name: Azure Login
+        if: inputs.cluster == 'aks'
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        if: inputs.cluster == 'aks'
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+
+      # GKE deployment
+      - name: GCP Auth
+        if: inputs.cluster == 'gke'
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Set GKE context
+        if: inputs.cluster == 'gke'
+        uses: google-github-actions/get-gke-credentials@v1
+        with:
+          cluster_name: ${{ secrets.GKE_CLUSTER_NAME }}
+          location: ${{ secrets.GKE_LOCATION }}
+
+      - name: Create namespace
+        run: |
+          kubectl create namespace todo-chatbot --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install ${{ env.HELM_RELEASE }} \
+            helm-charts/todo-chatbot \
+            --namespace todo-chatbot \
+            --values helm-charts/todo-chatbot/values-${{ inputs.cluster }}.yaml \
+            --set backend.image.tag=${{ github.sha }} \
+            --set frontend.image.tag=${{ github.sha }} \
+            --set notification.image.tag=${{ github.sha }} \
+            --set recurring.image.tag=${{ github.sha }} \
+            --set audit.image.tag=${{ github.sha }} \
+            --set websocket.image.tag=${{ github.sha }} \
+            --set secrets.neon.connectionString="${{ secrets.NEON_CONNECTION_STRING }}" \
+            --set secrets.openai.apiKey="${{ secrets.OPENAI_API_KEY }}" \
+            --wait \
+            --timeout 10m
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n todo-chatbot
+          kubectl get services -n todo-chatbot
+
+      - name: Get ingress URL
+        if: inputs.environment == 'production'
+        run: |
+          echo "Application URL:"
+          kubectl get ingress -n todo-chatbot -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'

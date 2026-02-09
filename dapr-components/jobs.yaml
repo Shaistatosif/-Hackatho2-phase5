@@ -1,0 +1,13 @@
+# T011 - Dapr Jobs Component (Scheduler)
+# Phase V Todo Chatbot - Jobs API for Reminders
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: scheduler
+  namespace: default
+spec:
+  type: scheduler.job
+  version: v1alpha1
+  metadata: []
+scopes:
+  - backend

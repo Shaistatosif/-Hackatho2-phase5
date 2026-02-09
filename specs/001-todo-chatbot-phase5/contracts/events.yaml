@@ -1,0 +1,317 @@
+# Kafka Event Schemas - CloudEvents Format
+# Phase V Todo Chatbot
+
+asyncapi: 2.6.0
+info:
+  title: Todo Chatbot Event Schemas
+  version: 1.0.0
+  description: Kafka event schemas for Phase V Todo Chatbot
+
+servers:
+  local:
+    url: kafka:9092
+    protocol: kafka
+    description: Local Redpanda/Kafka
+  cloud:
+    url: ${KAFKA_BROKERS}
+    protocol: kafka
+    description: Cloud Kafka (Redpanda Cloud / Strimzi)
+
+channels:
+  task-events:
+    description: All task CRUD operations
+    publish:
+      operationId: publishTaskEvent
+      message:
+        $ref: '#/components/messages/TaskEvent'
+    subscribe:
+      operationId: subscribeTaskEvents
+      message:
+        $ref: '#/components/messages/TaskEvent'
+
+  reminders:
+    description: Reminder notifications when due
+    publish:
+      operationId: publishReminderEvent
+      message:
+        $ref: '#/components/messages/ReminderEvent'
+    subscribe:
+      operationId: subscribeReminders
+      message:
+        $ref: '#/components/messages/ReminderEvent'
+
+  task-updates:
+    description: Real-time task updates for client sync
+    publish:
+      operationId: publishTaskUpdate
+      message:
+        $ref: '#/components/messages/TaskUpdateEvent'
+    subscribe:
+      operationId: subscribeTaskUpdates
+      message:
+        $ref: '#/components/messages/TaskUpdateEvent'
+
+components:
+  messages:
+    TaskEvent:
+      name: TaskEvent
+      title: Task Event
+      contentType: application/cloudevents+json
+      payload:
+        $ref: '#/components/schemas/TaskEventPayload'
+
+    ReminderEvent:
+      name: ReminderEvent
+      title: Reminder Due Event
+      contentType: application/cloudevents+json
+      payload:
+        $ref: '#/components/schemas/ReminderEventPayload'
+
+    TaskUpdateEvent:
+      name: TaskUpdateEvent
+      title: Task Update for Real-time Sync
+      contentType: application/cloudevents+json
+      payload:
+        $ref: '#/components/schemas/TaskUpdatePayload'
+
+  schemas:
+    # CloudEvents envelope
+    CloudEventEnvelope:
+      type: object
+      required:
+        - specversion
+        - type
+        - source
+        - id
+        - time
+        - data
+      properties:
+        specversion:
+          type: string
+          const: "1.0"
+        type:
+          type: string
+        source:
+          type: string
+          description: Service that produced the event
+        id:
+          type: string
+          format: uuid
+        time:
+          type: string
+          format: date-time
+        datacontenttype:
+          type: string
+          default: application/json
+        data:
+          type: object
+
+    # Task Event Payload
+    TaskEventPayload:
+      allOf:
+        - $ref: '#/components/schemas/CloudEventEnvelope'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - task.created
+                - task.updated
+                - task.completed
+                - task.deleted
+            data:
+              $ref: '#/components/schemas/TaskEventData'
+
+    TaskEventData:
+      type: object
+      required:
+        - event_type
+        - task_id
+        - user_id
+        - timestamp
+      properties:
+        event_type:
+          type: string
+          enum: [created, updated, completed, deleted]
+        task_id:
+          type: string
+          format: uuid
+        task_data:
+          $ref: '#/components/schemas/TaskData'
+          description: Full task object (null for deleted)
+        user_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          properties:
+            source_action:
+              type: string
+              description: How the action was triggered (chat, api, recurring)
+            previous_state:
+              type: object
+              description: Previous task state (for updates)
+
+    # Reminder Event Payload
+    ReminderEventPayload:
+      allOf:
+        - $ref: '#/components/schemas/CloudEventEnvelope'
+        - type: object
+          properties:
+            type:
+              type: string
+              const: reminder.due
+            data:
+              $ref: '#/components/schemas/ReminderEventData'
+
+    ReminderEventData:
+      type: object
+      required:
+        - task_id
+        - title
+        - due_at
+        - remind_at
+        - user_id
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          description: Task title for notification display
+        due_at:
+          type: string
+          format: date-time
+        remind_at:
+          type: string
+          format: date-time
+        user_id:
+          type: string
+        notification_channels:
+          type: array
+          items:
+            type: string
+          default: ["in_app"]
+
+    # Task Update Payload (for WebSocket sync)
+    TaskUpdatePayload:
+      allOf:
+        - $ref: '#/components/schemas/CloudEventEnvelope'
+        - type: object
+          properties:
+            type:
+              type: string
+              const: task.changed
+            data:
+              $ref: '#/components/schemas/TaskUpdateData'
+
+    TaskUpdateData:
+      type: object
+      required:
+        - action
+        - task_id
+        - user_id
+      properties:
+        action:
+          type: string
+          enum: [created, updated, completed, deleted]
+        task_id:
+          type: string
+          format: uuid
+        task_data:
+          $ref: '#/components/schemas/TaskData'
+          description: Current task state (null for deleted)
+        user_id:
+          type: string
+
+    # Shared Task Data Schema
+    TaskData:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, completed]
+        priority:
+          type: string
+          enum: [High, Medium, Low]
+        tags:
+          type: array
+          items:
+            type: string
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        remind_at:
+          type: string
+          format: date-time
+          nullable: true
+        recurrence_pattern:
+          type: string
+          enum: [daily, weekly, monthly]
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+# Example Events
+x-examples:
+  task-created:
+    specversion: "1.0"
+    type: "task.created"
+    source: "backend"
+    id: "550e8400-e29b-41d4-a716-446655440000"
+    time: "2026-02-09T12:00:00Z"
+    datacontenttype: "application/json"
+    data:
+      event_type: "created"
+      task_id: "123e4567-e89b-12d3-a456-426614174000"
+      task_data:
+        id: "123e4567-e89b-12d3-a456-426614174000"
+        user_id: "user-123"
+        title: "Buy groceries"
+        status: "pending"
+        priority: "High"
+        tags: ["shopping"]
+        due_at: "2026-02-10T17:00:00Z"
+        remind_at: "2026-02-10T16:00:00Z"
+        created_at: "2026-02-09T12:00:00Z"
+        updated_at: "2026-02-09T12:00:00Z"
+      user_id: "user-123"
+      timestamp: "2026-02-09T12:00:00Z"
+      metadata:
+        source_action: "chat"
+
+  reminder-due:
+    specversion: "1.0"
+    type: "reminder.due"
+    source: "backend"
+    id: "660e8400-e29b-41d4-a716-446655440001"
+    time: "2026-02-10T16:00:00Z"
+    datacontenttype: "application/json"
+    data:
+      task_id: "123e4567-e89b-12d3-a456-426614174000"
+      title: "Buy groceries"
+      due_at: "2026-02-10T17:00:00Z"
+      remind_at: "2026-02-10T16:00:00Z"
+      user_id: "user-123"
+      notification_channels: ["in_app"]
