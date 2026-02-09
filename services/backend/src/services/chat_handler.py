@@ -229,50 +229,144 @@ class ChatHandler:
         request: ChatRequest
     ) -> ChatResponse:
         """
-        Simple pattern matching fallback when no LLM API key is available.
+        Smart pattern matching fallback when no LLM API key is available.
+        Handles natural language inputs without requiring exact commands.
         """
-        message = request.message.lower()
+        message = request.message.lower().strip()
+        original = request.message.strip()
 
-        # Simple command parsing
-        if any(word in message for word in ["add", "create", "new"]):
-            # Extract title after command words
-            title = request.message
-            for word in ["add task:", "create task:", "add:", "create:", "new task:", "add task", "create task"]:
-                title = title.replace(word, "").replace(word.lower(), "")
-            title = title.strip()
+        from ..models.schemas import TaskCreateRequest
+        from ..services.task_service import get_task_service
+        task_service = get_task_service()
 
-            if title:
-                from ..models.schemas import TaskCreateRequest
-                from ..services.task_service import get_task_service
+        # --- Complete/done/finish a task ---
+        if any(word in message for word in ["complete", "done", "finish", "mark"]):
+            tasks, total = await task_service.list_tasks(user_id)
+            # Try to find matching task
+            search_text = message
+            for word in ["complete", "done", "finish", "mark", "as", "task", "the"]:
+                search_text = search_text.replace(word, "")
+            search_text = search_text.strip()
 
-                task_service = get_task_service()
-                task_request = TaskCreateRequest(title=title)
-                task = await task_service.create_task(user_id, task_request, source="chat")
+            for task in tasks:
+                if search_text and search_text.lower() in task.title.lower():
+                    completed = await task_service.complete_task(user_id, task.id, source="chat")
+                    if completed:
+                        return ChatResponse(
+                            response=f"Done! Marked **{completed.title}** as complete",
+                            task_id=completed.id,
+                            action="complete"
+                        )
 
-                return ChatResponse(
-                    response=f"✅ Created task: **{task.title}**",
-                    task_id=task.id,
-                    action="create"
-                )
+            # If specific task not found, complete the first pending task
+            pending = [t for t in tasks if t.status == "pending"]
+            if pending:
+                completed = await task_service.complete_task(user_id, pending[0].id, source="chat")
+                if completed:
+                    return ChatResponse(
+                        response=f"Done! Marked **{completed.title}** as complete",
+                        task_id=completed.id,
+                        action="complete"
+                    )
 
-        elif any(word in message for word in ["list", "show", "see", "view"]):
-            from ..services.task_service import get_task_service
+            return ChatResponse(response="No pending tasks to complete.")
 
-            task_service = get_task_service()
+        # --- Delete/remove a task ---
+        if any(word in message for word in ["delete", "remove", "cancel"]):
+            tasks, total = await task_service.list_tasks(user_id)
+            search_text = message
+            for word in ["delete", "remove", "cancel", "task", "the"]:
+                search_text = search_text.replace(word, "")
+            search_text = search_text.strip()
+
+            for task in tasks:
+                if search_text and search_text.lower() in task.title.lower():
+                    await task_service.delete_task(user_id, task.id, source="chat")
+                    return ChatResponse(
+                        response=f"Deleted task: **{task.title}**",
+                        task_id=task.id,
+                        action="delete"
+                    )
+
+            return ChatResponse(response="Could not find that task to delete. Try 'show my tasks' first.")
+
+        # --- List/show tasks ---
+        if any(word in message for word in ["list", "show", "see", "view", "my tasks", "all tasks"]):
             tasks, total = await task_service.list_tasks(user_id)
 
             if not tasks:
-                return ChatResponse(response="📋 No tasks found", action="list")
+                return ChatResponse(response="No tasks found. Try typing something like 'Buy groceries' to create one!", action="list")
 
-            msg = f"📋 You have {total} task(s):\n"
+            msg = f"You have {total} task(s):\n"
             for i, task in enumerate(tasks[:10], 1):
-                status = "✅" if task.status == "completed" else "⬜"
-                msg += f"\n{i}. {status} **{task.title}**"
+                status = "[done]" if task.status == "completed" else "[  ]"
+                priority_icon = {"High": "!", "Medium": "-", "Low": "."}
+                msg += f"\n{i}. {status} {task.title} ({task.priority})"
 
             return ChatResponse(response=msg, action="list")
 
+        # --- Search tasks ---
+        if any(word in message for word in ["find", "search", "look for"]):
+            search_text = message
+            for word in ["find", "search", "look for", "tasks", "task", "about"]:
+                search_text = search_text.replace(word, "")
+            search_text = search_text.strip()
+
+            if search_text:
+                tasks, total = await task_service.search_tasks(user_id, search_text)
+                if tasks:
+                    msg = f"Found {total} task(s) matching '{search_text}':\n"
+                    for task in tasks[:5]:
+                        msg += f"\n- {task.title}"
+                    return ChatResponse(response=msg, action="search")
+                return ChatResponse(response=f"No tasks found matching '{search_text}'")
+
+        # --- Help ---
+        if any(word in message for word in ["help", "how", "what can"]):
+            return ChatResponse(
+                response="I can help you manage tasks! Here's what I understand:\n\n"
+                "- Just type anything to create a task (e.g., 'Buy groceries')\n"
+                "- 'Show my tasks' - list all tasks\n"
+                "- 'Complete <task name>' - mark a task done\n"
+                "- 'Delete <task name>' - remove a task\n"
+                "- 'Find <keyword>' - search tasks"
+            )
+
+        # --- Create task (anything else = create a task) ---
+        # Extract title - remove common prefixes
+        title = original
+        for prefix in ["add task:", "create task:", "add:", "create:", "new task:",
+                        "add task", "create task", "new task", "add", "create", "new",
+                        "task:", "todo:", "todo"]:
+            if title.lower().startswith(prefix):
+                title = title[len(prefix):].strip()
+                break
+
+        title = title.strip()
+        if title:
+            # Detect priority from message
+            priority = "Medium"
+            if any(w in message for w in ["urgent", "important", "asap", "high priority"]):
+                priority = "High"
+            elif any(w in message for w in ["low priority", "whenever", "not urgent"]):
+                priority = "Low"
+
+            from ..models.task import Priority
+            task_request = TaskCreateRequest(title=title, priority=Priority(priority))
+            task = await task_service.create_task(user_id, task_request, source="chat")
+
+            response_msg = f"Created task: **{task.title}**"
+            if priority != "Medium":
+                response_msg += f" ({priority} priority)"
+
+            return ChatResponse(
+                response=response_msg,
+                task_id=task.id,
+                action="create"
+            )
+
         return ChatResponse(
-            response="I can help you manage tasks! Try:\n• 'Add task: <title>'\n• 'Show my tasks'\n• 'Complete <task>'\n• 'Delete <task>'"
+            response="Type anything to create a task, or say 'help' for more options!"
         )
 
 
