@@ -90,12 +90,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="relative mt-4 text-center">
-        <p className="text-gray-500 text-xs">
-          Event-Driven Architecture &bull; Microservices &bull; Built with FastAPI + Next.js
-        </p>
-      </footer>
     </main>
   );
 }
