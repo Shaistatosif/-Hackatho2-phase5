@@ -151,14 +151,46 @@ kubectl port-forward svc/frontend 3000:3000 &
 open http://localhost:3000
 ```
 
-## Development Mode (Without Kubernetes)
+## Quick Start (Docker Compose)
+
+The fastest way to run everything locally:
+
+```bash
+# Clone and start all 6 services
+docker-compose up --build
+
+# Frontend: http://localhost:3000
+# Backend API: http://localhost:8000
+# Swagger Docs: http://localhost:8000/docs
+```
+
+Optionally set environment variables:
+
+```bash
+# .env file (optional)
+OPENAI_API_KEY=sk-...          # For LLM-powered chat (works without it too)
+NEON_CONNECTION_STRING=...      # For persistent storage
+```
+
+### Services started by Docker Compose
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Frontend | http://localhost:3000 | Chat UI |
+| Backend | http://localhost:8000 | FastAPI + Swagger |
+| Notification | http://localhost:8001 | Reminder handler |
+| Recurring | http://localhost:8002 | Auto-regeneration |
+| Audit | http://localhost:8003 | Event logging |
+| WebSocket | http://localhost:8004 | Real-time sync |
+
+## Development Mode (Without Docker)
 
 ### Backend
 
 ```bash
 cd services/backend
 pip install -r requirements.txt
-dapr run --app-id backend --app-port 8000 -- uvicorn src.main:app --reload
+uvicorn src.main:app --reload --port 8000
 ```
 
 ### Frontend
@@ -167,6 +199,13 @@ dapr run --app-id backend --app-port 8000 -- uvicorn src.main:app --reload
 cd services/frontend
 npm install
 npm run dev
+```
+
+### With Dapr (Full Event-Driven Mode)
+
+```bash
+cd services/backend
+dapr run --app-id backend --app-port 8000 -- uvicorn src.main:app --reload
 ```
 
 ## API Documentation
@@ -178,6 +217,7 @@ Once running, visit:
 
 ## Example Chat Commands
 
+**English:**
 ```
 "Add task: Buy groceries with high priority"
 "Show my tasks"
@@ -185,6 +225,16 @@ Once running, visit:
 "Add task: Take vitamins every day" (recurring)
 "Find tasks about shopping"
 "Delete the groceries task"
+```
+
+**Urdu / Roman Urdu:**
+```
+"Doodh lana hai"                    → creates task
+"Tasks dikhao"                      → lists all tasks
+"Doodh lana complete kro"           → marks complete
+"Doodh lana delet kro"              → deletes task
+"Grocery dhoond"                    → search
+"Madad"                             → help
 ```
 
 ## Project Structure
