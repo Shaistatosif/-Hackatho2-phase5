@@ -94,10 +94,9 @@ class ChatHandler:
             )
 
         except Exception as e:
-            logger.error("chat_processing_error", error=str(e))
-            return ChatResponse(
-                response=f"Sorry, I encountered an error processing your request. Please try again."
-            )
+            logger.warning("openai_call_failed_using_fallback", error=str(e))
+            # Fallback to pattern matching when LLM call fails
+            return await self._process_without_llm(user_id, request)
 
     async def _call_openai(self, message: str) -> dict[str, Any]:
         """Call OpenAI API with function definitions."""
