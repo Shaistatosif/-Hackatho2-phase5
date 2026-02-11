@@ -1,7 +1,7 @@
 // T047 - API Service for Backend Calls
 // Phase V Todo Chatbot - Frontend API Client
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export interface Task {
   id: string;
